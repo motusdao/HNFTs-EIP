@@ -1,14 +1,14 @@
 ---
 eip: <to be assigned>
 title: HNFT – Human Non-Fungible Token Standard
-description: A standard for representing human identity and behavior data as non-fungible tokens with zero-knowledge proof support and encrypted metadata.
-author: Gerardo Alvarez (@brahma101.eth)
+description: A standard for representing human identity and behavior data as non-fungible tokens with zero-knowledge proof support, encrypted metadata, and account abstraction integration.
+author: Gerrry Alvrz (@brahma101.eth)
 discussions-to: https://ethereum-magicians.org/t/eip-hnft-human-non-fungible-token-standard/12345
 status: Draft
 type: Standards Track
 category: ERC
 created: 2025-07-27
-requires: EIP-165, EIP-721, EIP-2981 (optional)
+requires: EIP-165, EIP-721, EIP-2981 (optional), EIP-4337 (optional)
 ---
 
 ## Table of Contents
@@ -26,7 +26,7 @@ requires: EIP-165, EIP-721, EIP-2981 (optional)
 - [Copyright](#copyright)
 
 ## Simple Summary
-A standard interface for Human Non-Fungible Tokens (HNFTs), extending ERC-721 to encapsulate verifiable human identity and behavior data with zero-knowledge proofs, encrypted metadata, and modular governance for decentralized, privacy-preserving identity systems.
+A standard interface for Human Non-Fungible Tokens (HNFTs), extending ERC-721 to encapsulate verifiable human identity and behavior data with zero-knowledge proofs, encrypted metadata, modular governance, and optional account abstraction for user-friendly key management and transaction flexibility.
 
 ## Abstract
 The HNFT standard extends ERC-721 to create a programmable, cryptographically secure identity container for human subjects or digital personas. It introduces:
@@ -36,9 +36,10 @@ The HNFT standard extends ERC-721 to create a programmable, cryptographically se
 - **Zero-knowledge proof (ZKP)** support for privacy-preserving trait validation.
 - **Optional governance** for trait verification and slashing.
 - **Quantum-resilient cryptography** for long-term security.
+- **Account abstraction** integration via EIP-4337 for gasless transactions and flexible authorization.
 - **Hybrid onchain-offchain integration** for scalability and interoperability with decentralized identifiers (DIDs) and verifiable credentials (VCs).
 
-HNFTs enable self-sovereign identity, machine-verifiable trust scores, and behavioral ledgers while preserving privacy. They are designed for applications like decentralized AI, social protocols, and reputation systems.
+HNFTs enable self-sovereign identity, machine-verifiable trust scores, and behavioral ledgers while preserving privacy. They are designed for applications like decentralized AI, social protocols, and reputation systems, with enhanced usability through account abstraction.
 
 ## Motivation
 Web3 lacks a standardized, privacy-preserving mechanism for encoding human identity. Existing NFT standards (ERC-721, ERC-1155) are insufficient for identity use cases due to:
@@ -48,6 +49,7 @@ Web3 lacks a standardized, privacy-preserving mechanism for encoding human ident
 - Inability to prove traits without revealing sensitive data.
 - Limited interoperability with DID and VC standards.
 - Vulnerability to centralized metadata storage.
+- Complex user experience for key management and transaction signing.
 
 HNFTs address these gaps by providing:
 
@@ -55,6 +57,7 @@ HNFTs address these gaps by providing:
 - **Privacy-preserving verification** for pseudonymous traits and credentials.
 - **Governance hooks** for decentralized trust and accountability.
 - **Interoperability** with DID, VC, and Web3 ecosystems.
+- **Account abstraction** for simplified key management, gasless interactions, and programmable authorization.
 
 Applications include decentralized AI governance, post-platform social networks, behavioral staking, and privacy-preserving reputation systems.
 
@@ -87,7 +90,7 @@ interface IHNFT is IERC721 {
 
     /// @notice Mints a new HNFT with encrypted metadata and initial traits.
     /// @dev Throws if `_to` is the zero address or if `_tokenId` already exists.
-    /// @param _to The recipient of the HNFT.
+    /// @param _to The recipient of the HNFT (may be an EIP-4337 account).
     /// @param _tokenId The unique identifier for the HNFT.
     /// @param _encryptedMetadata Ciphertext containing private identity data.
     /// @param _traitIds Array of trait identifiers (hashed).
@@ -136,11 +139,22 @@ interface IHNFT is IERC721 {
     /// @return traitIds Array of trait identifiers.
     /// @return traitData Array of trait data (public or hashed).
     function getTraits(uint256 _tokenId) external view returns (bytes32[] memory traitIds, bytes[] memory traitData);
+
+    /// @notice Executes an HNFT operation via EIP-4337 UserOperation.
+    /// @dev Validates the UserOperation via the EntryPoint contract.
+    /// @param _userOp The EIP-4337 UserOperation struct.
+    /// @param _tokenId The HNFT identifier.
+    /// @param _operation The operation to perform (e.g., mint, verify).
+    function executeUserOperation(
+        UserOperation calldata _userOp,
+        uint256 _tokenId,
+        bytes calldata _operation
+    ) external;
 }
 ```
 
 ### Metadata Schema
-HNFTs extend the ERC-721 Metadata JSON Schema to include encrypted fields and trait attestations. The schema is as follows:
+HNFTs extend the ERC-721 Metadata JSON Schema to include encrypted fields, trait attestations, and account abstraction configuration. The schema is as follows:
 
 ```json
 {
@@ -184,6 +198,20 @@ HNFTs extend the ERC-721 Metadata JSON Schema to include encrypted fields and tr
                     }
                 }
             }
+        },
+        "accountAbstraction": {
+            "type": "object",
+            "description": "Account abstraction configuration",
+            "properties": {
+                "entryPoint": {
+                    "type": "string",
+                    "description": "Address of the EIP-4337 EntryPoint contract"
+                },
+                "paymaster": {
+                    "type": "string",
+                    "description": "Optional address of the paymaster for gasless transactions"
+                }
+            }
         }
     }
 }
@@ -215,33 +243,50 @@ HNFTs support modular encryption schemes, including:
 
 Contracts MUST specify the encryption scheme in the metadata and ensure key rotation does not invalidate the HNFT.
 
+### Account Abstraction Integration (EIP-4337)
+HNFTs MAY support EIP-4337 for account abstraction to enhance user experience. This enables:
+
+- **Gasless Transactions**: Users can interact with HNFTs (e.g., mint, verify traits) without holding ETH, using a paymaster.
+- **Flexible Authorization**: HNFT operations (e.g., updateMetadata, verifyTrait) can be executed via user operations signed by an EIP-4337-compatible wallet.
+- **Key Management**: Users can use social recovery or multi-signature schemes for encryption keys and HNFT ownership.
+
+Contracts SHOULD integrate with the EIP-4337 EntryPoint contract to process UserOperation structs. For example:
+
+- A user submits a UserOperation to mint an HNFT, signed by their EIP-4337 wallet.
+- A paymaster (optional) covers gas fees.
+- The EntryPoint validates the operation and calls mint on the HNFT contract.
+
+The IHNFT interface is compatible with EIP-4337, as functions like mint and verifyTrait accept address _to or msg.sender, which can be an EIP-4337 account. Implementations MAY include a UserOperation-specific function as shown above.
+
 ### Lifecycle
-- **Mint**: Creates an HNFT with encrypted metadata and initial traits.
-- **Verify**: Submits a ZKP to attest a trait's validity.
+- **Mint**: Creates an HNFT with encrypted metadata and initial traits, optionally via EIP-4337.
+- **Verify**: Submits a ZKP to attest a trait’s validity, with gasless options via paymasters.
 - **Prove**: Allows third parties to query trait validity without revealing data.
-- **Update**: Modifies encrypted metadata or adds new traits.
-- **Slash**: Removes invalid traits via governance.
+- **Update**: Modifies encrypted metadata or adds new traits, with flexible authorization.
+- **Slash**: Removes invalid traits via governance, callable by EIP-4337 accounts.
 
 ## Caveats
 - **Solidity Limitations**: The `IHNFT` interface assumes Solidity ^0.8.20. Implementations MAY use stricter mutability (e.g., `view` instead of `external`) per Solidity issue #3412.
 - **Privacy Risks**: Improper encryption or ZKP implementation may leak sensitive data.
-- **Compatibility**: Existing ERC-721 marketplaces may require updates to handle encrypted metadata and ZKP traits.
-- **Key Management**: Loss of encryption keys may render metadata inaccessible.
-- **Gas Costs**: Onchain ZKP verification can be gas-intensive; offchain proof generation is RECOMMENDED.
+- **Compatibility**: Existing ERC-721 marketplaces may require updates to handle encrypted metadata, ZKP traits, or EIP-4337 operations.
+- **Key Management**: Loss of encryption keys or EIP-4337 wallet keys may render metadata or HNFTs inaccessible.
+- **Gas Costs**: Onchain ZKP verification and EIP-4337 operations can be gas-intensive; offchain proof generation and paymasters are RECOMMENDED.
 
 ## Rationale
 - **TraitId System**: Enables dynamic, composable identity attributes with ZKP mappings for privacy and verifiability.
 - **ZKP Support**: Uses Groth16 or PLONK for sybil resistance and privacy without deanonymization.
 - **Encrypted Metadata**: Protects sensitive data while allowing modular updates without reminting.
 - **Governance Hooks**: Enables decentralized trust and accountability via slashing mechanisms.
+- **Account Abstraction**: Simplifies user interactions by enabling gasless transactions, social recovery, and programmable authorization via EIP-4337.
 
 Alternatives considered:
 - Using ERC-1155 for multi-trait tokens (less suitable for unique identities).
 - Storing all metadata onchain (too expensive).
 - Non-zk verification (lacks privacy guarantees).
+- Traditional EOAs for all operations (less user-friendly than EIP-4337).
 
 ## Backwards Compatibility
-HNFTs inherit from ERC-721 and support ERC-165 for interface detection. The `ERC721Metadata` extension is RECOMMENDED for compatibility with existing marketplaces. Optional support for ERC-2981 allows royalty integration. Existing ERC-721 contracts can interact with HNFTs for basic transfer functions, but advanced features (e.g., trait verification, encrypted metadata) require updated frontends or contracts.
+HNFTs inherit from ERC-721 and support ERC-165 for interface detection. The `ERC721Metadata` extension is RECOMMENDED for compatibility with existing marketplaces. Optional support for ERC-2981 allows royalty integration. EIP-4337 integration is optional and does not break ERC-721 compatibility, as UserOperation handling is additive. Existing ERC-721 contracts can interact with HNFTs for basic transfer functions, but advanced features (e.g., trait verification, encrypted metadata, EIP-4337 operations) require updated frontends or contracts.
 
 ## Test Cases
 
@@ -249,48 +294,57 @@ HNFTs inherit from ERC-721 and support ERC-165 for interface detection. The `ERC
 **Scenario**: A psychologist and patient register with HNFTs to enable verified, privacy-preserving mental health interactions.
 
 **Minting**:
-- Psychologist mints HNFT with encrypted metadata (DID, license number) and traits (role:psychologist, country:USA).
-- Patient mints HNFT with traits (role:patient).
+- Psychologist mints HNFT via an EIP-4337 wallet with encrypted metadata (DID, license number) and traits (role:psychologist, country:USA), using a paymaster for gasless minting.
+- Patient mints HNFT with traits (role:patient, country:Mexico).
 
 **Verification**:
-- Psychologist submits a ZKP to verify licensed=True without revealing the license number.
+- Psychologist submits a ZKP to verify licensed=True without revealing the license number, signed via their EIP-4337 wallet.
 - Trait verified_clinician=true is added with a governance signature.
 
 **Behavioral Ledger**:
-- A session is recorded as a new trait (session:2025-07-27) attested by the psychologist's HNFT.
-- Patient's HNFT updates with an encrypted behavioral record.
+- A session is recorded as a new trait (session:2025-07-27) attested by the psychologist’s HNFT.
+- Patient’s HNFT updates with an encrypted behavioral record, authorized via EIP-4337.
 
 **Slashing**:
-- If a psychologist's license is revoked, a governance contract slashes the verified_clinician trait.
+- If a psychologist’s license is revoked, a governance contract slashes the verified_clinician trait via a UserOperation.
 
 ### Decentralized AI Use Case
 **Scenario**: An AI protocol uses HNFTs to verify human contributors.
 
-- A user mints an HNFT with traits (contributor:AI_trainer, expertise:ML).
+- A user mints an HNFT with traits (contributor:AI_trainer, expertise:ML) using an EIP-4337 wallet with social recovery.
 - ZKP verifies expertise without revealing credentials.
 - Contributions are logged as traits, enabling reputation-based rewards.
 
+### Account Abstraction Use Case
+**Scenario**: A user with an EIP-4337 wallet manages their HNFT.
+
+- User submits a UserOperation to mint an HNFT, with gas paid by a paymaster.
+- User updates metadata using a social recovery wallet, authorizing the operation with a secondary key.
+- A third party verifies a trait (verified_contributor=true) via a gasless verifyTrait call.
+
 ## Implementations
-- **MotusDAO**: Live implementation for mental health professionals and patients, supporting ZKP trait verification and encrypted behavioral records ([GitHub TBD]).
-- **HNFT-Minter**: Frontend for minting and managing HNFTs ([Demo TBD]).
+- **MotusDAO**: Live implementation for mental health professionals and patients, supporting ZKP trait verification, encrypted behavioral records, and EIP-4337 wallets ([GitHub TBD]).
+- **HNFT-Minter**: Frontend for minting and managing HNFTs, with EIP-4337 support ([Demo TBD]).
 - **ZK-Metadata Layer**: Offchain proof generator with Groth16/PLONK support.
 - **PoseidonStorage**: Lattice-based encrypted storage for zero-trust environments.
 - **SNARKRegistry**: Onchain verifier contract for trait validation and governance.
 
-A reference implementation using OpenZeppelin is under development.
+A reference implementation using OpenZeppelin and EIP-4337 EntryPoint is under development.
 
 ## Security Considerations
 - **Sybil Attacks**: ZKP-based trait verification and governance slashing prevent multiple HNFTs for the same identity. Integration with W3C DID standards is RECOMMENDED.
 - **Encryption Risks**: Implementations MUST use audited cryptographic libraries (e.g., libsnark, OpenSSL) to prevent leakage.
 - **Governance Abuse**: Slashing requires decentralized governance (e.g., DAO with timelocks) to prevent malicious actions.
-- **Key Management**: Users MUST securely store encryption keys; contracts SHOULD support key rotation without invalidating HNFTs.
-- **Gas Optimization**: Offchain ZKP generation and L2 integration (e.g., zkRollups) are RECOMMENDED to reduce costs.
+- **Key Management**: Users MUST securely store encryption keys and EIP-4337 wallet keys; contracts SHOULD support key rotation and social recovery without invalidating HNFTs.
+- **Gas Optimization**: Offchain ZKP generation, L2 integration (e.g., zkRollups), and EIP-4337 paymasters are RECOMMENDED to reduce costs.
 - **Privacy**: Metadata MUST be encrypted offchain (e.g., IPFS with AES) to prevent public access.
+- **Account Abstraction Risks**: EIP-4337 wallets MUST be audited for vulnerabilities (e.g., replay attacks, malformed UserOperation structs). Paymasters MUST enforce rate limits to prevent abuse.
 
 ## References
 - [EIP-165: Standard Interface Detection](https://eips.ethereum.org/EIPS/eip-165)
 - [EIP-721: Non-Fungible Token Standard](https://eips.ethereum.org/EIPS/eip-721)
 - [EIP-2981: NFT Royalty Standard](https://eips.ethereum.org/EIPS/eip-2981)
+- [EIP-4337: Account Abstraction via Entry Point Contract](https://eips.ethereum.org/EIPS/eip-4337)
 - [RFC 2119: Key words for use in RFCs](https://www.ietf.org/rfc/rfc2119.txt)
 - [W3C DID Specification](https://www.w3.org/TR/did-core/)
 - [W3C Verifiable Credentials](https://www.w3.org/TR/vc-data-model/)
